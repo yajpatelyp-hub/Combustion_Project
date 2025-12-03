@@ -3,9 +3,6 @@ import cantera as ct
 from scipy.integrate import solve_ivp
 
 
-# =============================================================================
-# Helper: Normalize mass fractions safely
-# =============================================================================
 def normalize_mass_fractions(Y):
     Y = np.array(Y, dtype=float)
 
