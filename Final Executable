@@ -1,0 +1,161 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import cantera as ct
+
+from Project_3_2 import solve_pfr_pyrolysis   # or your solver file
+
+
+# ==============================================================
+# 1. Mechanism list
+# ==============================================================
+
+mechanisms = {
+    "GRI-Mech 3.0":      "gri30.yaml",
+    "USC Mech II":       "uscmech2.yaml",
+    "ABF Soot Mechanism": "abf.yaml",
+    "Cai-Pitsch":        "cai_pitsch.yaml"
+}
+
+
+# ==============================================================
+# 2. Reactor operating conditions
+# ==============================================================
+
+D   = 0.05
+u0  = 0.05         # slow flow → long residence time
+T0  = 1200.0
+Tw  = 2000.0
+p0  = ct.one_atm
+x_end = 20.0
+
+
+# Store results
+results = {}
+
+for mech_name, mechfile in mechanisms.items():
+    print(f"\nRunning mechanism: {mech_name}  ({mechfile})")
+
+    sol = solve_pfr_pyrolysis(
+        mechfile = mechfile,
+        X0 = {"CH4": 1.0},
+        T0 = T0,
+        p0 = p0,
+        u0 = u0,
+        D = D,
+        Tw = Tw,
+        x_end = x_end,
+        Npts = 400
+    )
+
+    results[mech_name] = sol
+
+
+
+# ==============================================================
+# 3. PLOT: CH4 conversion comparison
+# ==============================================================
+
+plt.figure(figsize=(8,6))
+
+for mech_name, sol in results.items():
+    X = sol["X"]
+    gas = sol["gas"]
+    idx = gas.species_index("CH4")
+    plt.plot(sol["x"], X[idx], label=mech_name)
+
+plt.xlabel("x (m)")
+plt.ylabel("CH4 mole fraction")
+plt.title("CH4 Pyrolysis — CH4 Profile (Mechanism Comparison)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+
+# ==============================================================
+# 4. PLOT: H2 comparison
+# ==============================================================
+
+plt.figure(figsize=(8,6))
+
+for mech_name, sol in results.items():
+    X = sol["X"]
+    gas = sol["gas"]
+    idx = gas.species_index("H2")
+    plt.plot(sol["x"], X[idx], label=mech_name)
+
+plt.xlabel("x (m)")
+plt.ylabel("H2 mole fraction")
+plt.title("CH4 Pyrolysis — H2 Profile (Mechanism Comparison)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+
+# ==============================================================
+# 5. PLOT: C2H2 comparison
+# ==============================================================
+
+plt.figure(figsize=(8,6))
+
+for mech_name, sol in results.items():
+    X = sol["X"]
+    gas = sol["gas"]
+    if "C2H2" in gas.species_names:
+        idx = gas.species_index("C2H2")
+        plt.plot(sol["x"], X[idx], label=mech_name)
+
+plt.xlabel("x (m)")
+plt.ylabel("C2H2 mole fraction")
+plt.title("CH4 Pyrolysis — C2H2 Profile (Mechanism Comparison)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+
+# ==============================================================
+# 6. PLOT: C2H4 comparison
+# ==============================================================
+
+plt.figure(figsize=(8,6))
+
+for mech_name, sol in results.items():
+    X = sol["X"]
+    gas = sol["gas"]
+    if "C2H4" in gas.species_names:
+        idx = gas.species_index("C2H4")
+        plt.plot(sol["x"], X[idx], label=mech_name)
+
+plt.xlabel("x (m)")
+plt.ylabel("C2H4 mole fraction")
+plt.title("CH4 Pyrolysis — C2H4 Profile (Mechanism Comparison)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+
+
+# ==============================================================
+# 7. PLOT: Temperature comparison
+# ==============================================================
+
+plt.figure(figsize=(8,6))
+
+for mech_name, sol in results.items():
+    plt.plot(sol["x"], sol["T"], label=mech_name)
+
+plt.axhline(Tw, color='k', linestyle='--', label="Wall T")
+
+plt.xlabel("x (m)")
+plt.ylabel("Temperature (K)")
+plt.title("CH4 Pyrolysis — Temperature Profiles (Mechanism Comparison)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
