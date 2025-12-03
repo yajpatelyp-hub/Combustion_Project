@@ -1,0 +1,136 @@
+import numpy as np
+import cantera as ct
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
+
+# =============================================================================
+# PFR SOLVER FOR CH4 PYROLYSIS
+# =============================================================================
+def solve_pfr_pyrolysis(
+    mechfile,
+    X0,
+    T0,
+    p0,
+    u0,       # inlet velocity [m/s]
+    D,
+    Tw,
+    x_end,
+    Npts=1000   # finer grid to capture slow heating
+):
+    gas = ct.Solution(mechfile)
+    gas.TPX = T0, p0, X0
+    A = np.pi * D**2 / 4
+    Per = np.pi * D
+    ns = gas.n_species
+
+    # Mass flow rate based on inlet conditions
+    mdot = gas.density * A * u0
+    Y0 = gas.Y.copy()
+    y0 = np.concatenate(([T0], Y0))
+    x_eval = np.linspace(0, x_end, Npts)
+
+    # Convective heat transfer coefficient (simple constant)
+    h = 100.0  # W/m²K, increase for faster heating if needed
+
+    # RHS of ODE system
+    def rhs(x, y):
+        T = y[0]
+        Y = np.maximum(y[1:], 0)
+        s = Y.sum()
+        Y = Y / s if s > 0 else np.ones_like(Y)/ns
+
+        gas.TPY = T, p0, Y
+        rho = gas.density
+        cp = gas.cp_mass
+        h_i = gas.partial_molar_enthalpies / gas.molecular_weights
+        u = mdot / (rho * A)
+
+        omega_molar = gas.net_production_rates
+        omega_mass = omega_molar * (gas.molecular_weights / 1000.0)
+        dYdx = omega_mass / (rho * u)
+
+        Tw_val = Tw(x) if callable(Tw) else Tw
+        conv_term = h * Per / (mdot * cp) * (Tw_val - T)
+        chem_term = -(1.0/(rho*u*cp)) * np.dot(h_i, omega_mass)
+        dTdx = conv_term + chem_term
+
+        return np.concatenate(([dTdx], dYdx))
+
+    sol = solve_ivp(rhs, (0, x_end), y0, t_eval=x_eval,
+                    method='BDF', atol=1e-10, rtol=1e-8)
+    if not sol.success:
+        raise RuntimeError(sol.message)
+
+    T_sol = sol.y[0]
+    Y_sol = sol.y[1:]
+    X_sol = np.zeros_like(Y_sol)
+    for j in range(len(x_eval)):
+        gas.TPY = T_sol[j], p0, Y_sol[:, j]
+        X_sol[:, j] = gas.X
+
+    return {
+        "x": x_eval,
+        "T": T_sol,
+        "Y": Y_sol,
+        "X": X_sol,
+        "gas": gas
+    }
+
+# =============================================================================
+# RUN PYROLYSIS SIMULATION
+# =============================================================================
+mechfile = "creck.yaml"
+D = 0.0254
+u0 = 1.0
+T0 = 300.0
+p0 = ct.one_atm
+x_end = 1.0
+Tw = 1500.0
+
+result = solve_pfr_pyrolysis(
+    mechfile=mechfile,
+    X0={"CH4": 1.0},
+    T0=T0,
+    p0=p0,
+    u0=u0,
+    D=D,
+    Tw=Tw,
+    x_end=x_end
+)
+
+# =============================================================================
+# PLOTTING
+# =============================================================================
+x = result["x"]
+T = result["T"]
+gas = result["gas"]
+X = result["X"]
+
+# Temperature profile
+plt.figure(figsize=(7,5))
+plt.plot(x, T, 'r', label="Gas Temperature", linewidth=2)
+plt.axhline(Tw, color='k', linestyle='--', label="Wall Temperature")
+plt.xlabel("Reactor length x [m]")
+plt.ylabel("Temperature [K]")
+plt.title("CH4 Pyrolysis: Temperature Profile")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# Identify all species with mole fraction > 1e-5 anywhere
+threshold = 1e-5
+significant_species = [sp for i, sp in enumerate(gas.species_names) if X[i].max() > threshold]
+
+# Species profiles (mole fractions)
+plt.figure(figsize=(9,6))
+for sp in significant_species:
+    idx = gas.species_index(sp)
+    plt.plot(x, X[idx], label=sp)
+plt.xlabel("Reactor length x [m]")
+plt.ylabel("Mole fraction")
+plt.title("CH4 Pyrolysis: Significant Species")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
